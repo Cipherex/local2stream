@@ -346,7 +346,7 @@ class SpotifyHandler(StreamingPlatformBase):
         return ratio
 
     def search_track(self, metadata: TrackMetadata) -> Optional[MatchResult]:
-        """Search for track on Spotify with improved fuzzy matching and fallback by artist"""
+        """Robust search for track on Spotify with multiple fallback strategies"""
         if not self.sp:
             return None
         try:
@@ -354,19 +354,20 @@ class SpotifyHandler(StreamingPlatformBase):
             artist = metadata.artist
             if not title:
                 return None
-            # Try exact search first
+            search_title = self.clean_string(title)
+            search_artist = self.clean_string(artist)
+
+            # 1. Exact search: track+artist
             if artist:
                 query = f'track:"{title}" artist:"{artist}"'
             else:
                 query = f'track:"{title}"'
-            results = self.sp.search(q=query, type='track', limit=20)
+            results = self.sp.search(q=query, type='track', limit=50)
             if results['tracks']['items']:
-                # Check for exact match
+                # Exact match
                 for track in results['tracks']['items']:
                     track_title = self.clean_string(track['name'])
                     track_artist = self.clean_string(track['artists'][0]['name'])
-                    search_title = self.clean_string(title)
-                    search_artist = self.clean_string(artist)
                     if (track_title == search_title and 
                         (not search_artist or track_artist == search_artist)):
                         return MatchResult(
@@ -377,20 +378,18 @@ class SpotifyHandler(StreamingPlatformBase):
                             confidence=1.0,
                             platform='spotify'
                         )
-                # Try improved fuzzy matching
+                # Fuzzy match (track+artist)
                 best_match = None
                 best_score = 0
                 for track in results['tracks']['items']:
                     track_title = track['name']
                     track_artist = track['artists'][0]['name']
-                    search_title = title
-                    search_artist = artist
-                    title_score = self._fuzzy_match(track_title, search_title)
+                    title_score = self._fuzzy_match(track_title, title)
                     artist_score = 1.0
-                    if search_artist:
-                        artist_score = self._fuzzy_match(track_artist, search_artist)
+                    if artist:
+                        artist_score = self._fuzzy_match(track_artist, artist)
                     combined_score = (title_score * 0.7) + (artist_score * 0.3)
-                    if combined_score > best_score and combined_score > 0.55:
+                    if combined_score > best_score and combined_score > 0.5:
                         best_score = combined_score
                         best_match = track
                 if best_match:
@@ -402,17 +401,36 @@ class SpotifyHandler(StreamingPlatformBase):
                         confidence=best_score,
                         platform='spotify'
                     )
-            # Fallback: search by artist only, then fuzzy match title
+            # 2. Search by title only (no artist)
+            title_only_results = self.sp.search(q=f'track:"{title}"', type='track', limit=50)
+            if title_only_results['tracks']['items']:
+                best_match = None
+                best_score = 0
+                for track in title_only_results['tracks']['items']:
+                    track_title = track['name']
+                    title_score = self._fuzzy_match(track_title, title)
+                    if title_score > best_score and title_score > 0.5:
+                        best_score = title_score
+                        best_match = track
+                if best_match:
+                    return MatchResult(
+                        track_id=best_match['id'],
+                        track_name=best_match['name'],
+                        artist_name=best_match['artists'][0]['name'],
+                        match_type='title_only',
+                        confidence=best_score,
+                        platform='spotify'
+                    )
+            # 3. Search by artist only, fuzzy match title
             if artist:
-                artist_query = f'artist:"{artist}"'
-                artist_results = self.sp.search(q=artist_query, type='track', limit=30)
+                artist_results = self.sp.search(q=f'artist:"{artist}"', type='track', limit=50)
                 if artist_results['tracks']['items']:
                     best_match = None
                     best_score = 0
                     for track in artist_results['tracks']['items']:
                         track_title = track['name']
                         title_score = self._fuzzy_match(track_title, title)
-                        if title_score > best_score and title_score > 0.5:
+                        if title_score > best_score and title_score > 0.45:
                             best_score = title_score
                             best_match = track
                     if best_match:
