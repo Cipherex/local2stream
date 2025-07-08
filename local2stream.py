@@ -1,6 +1,7 @@
 """
 Local2Stream - Transfer your local music collection to streaming platforms
 Supports: Spotify
+Made by Aryan
 """
 
 import os
@@ -23,11 +24,10 @@ try:
     from mutagen.flac import FLAC
     from mutagen.mp4 import MP4
     from mutagen.id3 import ID3NoHeaderError
-    from ytmusicapi import YTMusic
 except ImportError as e:
     print(f"❌ Missing required package: {e}")
     print("Please install required packages:")
-    print("pip install spotipy mutagen ytmusicapi")
+    print("pip install spotipy mutagen")
     sys.exit(1)
 
 @dataclass
@@ -86,21 +86,14 @@ class ConfigManager:
             print(f"❌ Directory not found: {music_dir}")
             sys.exit(1)
         
-        # Platform selection
-        print("\nSelect streaming platforms:")
+        # Platform selection (only Spotify now)
+        print("\nSelect streaming platform:")
         print("1. Spotify")
-        print("2. YouTube Music")
-        print("3. Both")
-        
-        platform_choice = input("Enter choice (1-3): ").strip()
+        platform_choice = input("Enter choice (1): ").strip()
         platforms = []
-        
-        if platform_choice in ['1', '3']:
+        if platform_choice in ['', '1']:
             platforms.append('spotify')
-        if platform_choice in ['2', '3']:
-            platforms.append('youtube_music')
-        
-        if not platforms:
+        else:
             print("❌ Invalid choice. Exiting.")
             sys.exit(1)
         
@@ -112,20 +105,14 @@ class ConfigManager:
         
         # Platform-specific credentials
         spotify_config = {}
-        youtube_config = {}
-        
         if 'spotify' in platforms:
             spotify_config = self.get_spotify_config()
-        
-        if 'youtube_music' in platforms:
-            youtube_config = self.get_youtube_config()
         
         config = {
             'music_directory': music_dir,
             'playlist_name': playlist_name,
             'platforms': platforms,
-            'spotify': spotify_config,
-            'youtube_music': youtube_config
+            'spotify': spotify_config
         }
         
         # Ask to save config
@@ -166,27 +153,6 @@ class ConfigManager:
             'client_id': client_id,
             'client_secret': client_secret,
             'redirect_uri': 'http://localhost:8888/callback'
-        }
-    
-    def get_youtube_config(self) -> Dict:
-        """Get YouTube Music configuration"""
-        print("\n🎼 YouTube Music Configuration")
-        print("To get YouTube Music authentication:")
-        print("1. Run: ytmusicapi oauth")
-        print("2. Follow the instructions to get oauth.json")
-        print("3. Place oauth.json in the same directory as this script")
-        
-        oauth_file = input("Enter path to oauth.json file [oauth.json]: ").strip()
-        if not oauth_file:
-            oauth_file = 'oauth.json'
-        
-        if not os.path.exists(oauth_file):
-            print(f"❌ OAuth file not found: {oauth_file}")
-            print("Please run 'ytmusicapi oauth' first to generate authentication file.")
-            sys.exit(1)
-        
-        return {
-            'oauth_file': oauth_file
         }
 
 class AudioMetadataExtractor:
@@ -373,26 +339,36 @@ class SpotifyHandler(StreamingPlatformBase):
             print(f"❌ Spotify authentication failed: {e}")
             return False
     
+    def _fuzzy_match(self, a: str, b: str) -> float:
+        """Improved fuzzy matching for song/artist names"""
+        a_clean = self.clean_string(a)
+        b_clean = self.clean_string(b)
+        # Try direct ratio
+        ratio = difflib.SequenceMatcher(None, a_clean, b_clean).ratio()
+        # Try partial ratio (substring)
+        if a_clean in b_clean or b_clean in a_clean:
+            ratio = max(ratio, 0.85)
+        # Try ignoring extra characters (remove all non-alphanum)
+        a_alnum = re.sub(r'[^a-zA-Z0-9]', '', a_clean)
+        b_alnum = re.sub(r'[^a-zA-Z0-9]', '', b_clean)
+        ratio = max(ratio, difflib.SequenceMatcher(None, a_alnum, b_alnum).ratio())
+        return ratio
+
     def search_track(self, metadata: TrackMetadata) -> Optional[MatchResult]:
-        """Search for track on Spotify"""
+        """Search for track on Spotify with improved fuzzy matching"""
         if not self.sp:
             return None
-        
         try:
             title = metadata.title
             artist = metadata.artist
-            
             if not title:
                 return None
-            
             # Try exact search first
             if artist:
                 query = f'track:"{title}" artist:"{artist}"'
             else:
                 query = f'track:"{title}"'
-            
-            results = self.sp.search(q=query, type='track', limit=10)
-            
+            results = self.sp.search(q=query, type='track', limit=20)
             if results['tracks']['items']:
                 # Check for exact match
                 for track in results['tracks']['items']:
@@ -400,7 +376,6 @@ class SpotifyHandler(StreamingPlatformBase):
                     track_artist = self.clean_string(track['artists'][0]['name'])
                     search_title = self.clean_string(title)
                     search_artist = self.clean_string(artist)
-                    
                     if (track_title == search_title and 
                         (not search_artist or track_artist == search_artist)):
                         return MatchResult(
@@ -411,30 +386,22 @@ class SpotifyHandler(StreamingPlatformBase):
                             confidence=1.0,
                             platform='spotify'
                         )
-                
-                # Try fuzzy matching
+                # Try improved fuzzy matching
                 best_match = None
                 best_score = 0
-                
                 for track in results['tracks']['items']:
-                    track_title = self.clean_string(track['name'])
-                    track_artist = self.clean_string(track['artists'][0]['name'])
-                    search_title = self.clean_string(title)
-                    search_artist = self.clean_string(artist)
-                    
-                    # Calculate similarity scores
-                    title_score = difflib.SequenceMatcher(None, track_title, search_title).ratio()
+                    track_title = track['name']
+                    track_artist = track['artists'][0]['name']
+                    search_title = title
+                    search_artist = artist
+                    title_score = self._fuzzy_match(track_title, search_title)
                     artist_score = 1.0
-                    
                     if search_artist:
-                        artist_score = difflib.SequenceMatcher(None, track_artist, search_artist).ratio()
-                    
+                        artist_score = self._fuzzy_match(track_artist, search_artist)
                     combined_score = (title_score * 0.7) + (artist_score * 0.3)
-                    
-                    if combined_score > best_score and combined_score > 0.6:
+                    if combined_score > best_score and combined_score > 0.55:
                         best_score = combined_score
                         best_match = track
-                
                 if best_match:
                     return MatchResult(
                         track_id=best_match['id'],
@@ -444,9 +411,7 @@ class SpotifyHandler(StreamingPlatformBase):
                         confidence=best_score,
                         platform='spotify'
                     )
-            
             return None
-            
         except Exception as e:
             print(f"❌ Error searching Spotify: {e}")
             return None
@@ -484,140 +449,6 @@ class SpotifyHandler(StreamingPlatformBase):
             print(f"❌ Error adding tracks to Spotify playlist: {e}")
             return False
 
-class YouTubeMusicHandler(StreamingPlatformBase):
-    """Handle YouTube Music operations"""
-    
-    def __init__(self, config: Dict):
-        super().__init__(config)
-        self.platform_name = "YouTube Music"
-        self.ytm = None
-    
-    def authenticate(self) -> bool:
-        """Authenticate with YouTube Music"""
-        try:
-            self.ytm = YTMusic(self.config['oauth_file'])
-            
-            # Test authentication by getting user info
-            playlists = self.ytm.get_library_playlists(limit=1)
-            print(f"✅ Authenticated with YouTube Music")
-            return True
-            
-        except Exception as e:
-            print(f"❌ YouTube Music authentication failed: {e}")
-            return False
-    
-    def search_track(self, metadata: TrackMetadata) -> Optional[MatchResult]:
-        """Search for track on YouTube Music"""
-        if not self.ytm:
-            return None
-        
-        try:
-            title = metadata.title
-            artist = metadata.artist
-            
-            if not title:
-                return None
-            
-            # Create search query
-            if artist:
-                query = f"{artist} {title}"
-            else:
-                query = title
-            
-            results = self.ytm.search(query, filter='songs', limit=10)
-            
-            if results:
-                # Check for exact match
-                for result in results:
-                    if result.get('category') != 'Songs':
-                        continue
-                    
-                    track_title = self.clean_string(result['title'])
-                    track_artist = self.clean_string(result['artists'][0]['name']) if result.get('artists') else ""
-                    search_title = self.clean_string(title)
-                    search_artist = self.clean_string(artist)
-                    
-                    if (track_title == search_title and 
-                        (not search_artist or track_artist == search_artist)):
-                        return MatchResult(
-                            track_id=result['videoId'],
-                            track_name=result['title'],
-                            artist_name=result['artists'][0]['name'] if result.get('artists') else 'Unknown',
-                            match_type='exact',
-                            confidence=1.0,
-                            platform='youtube_music'
-                        )
-                
-                # Try fuzzy matching
-                best_match = None
-                best_score = 0
-                
-                for result in results:
-                    if result.get('category') != 'Songs':
-                        continue
-                    
-                    track_title = self.clean_string(result['title'])
-                    track_artist = self.clean_string(result['artists'][0]['name']) if result.get('artists') else ""
-                    search_title = self.clean_string(title)
-                    search_artist = self.clean_string(artist)
-                    
-                    # Calculate similarity scores
-                    title_score = difflib.SequenceMatcher(None, track_title, search_title).ratio()
-                    artist_score = 1.0
-                    
-                    if search_artist and track_artist:
-                        artist_score = difflib.SequenceMatcher(None, track_artist, search_artist).ratio()
-                    
-                    combined_score = (title_score * 0.7) + (artist_score * 0.3)
-                    
-                    if combined_score > best_score and combined_score > 0.6:
-                        best_score = combined_score
-                        best_match = result
-                
-                if best_match:
-                    return MatchResult(
-                        track_id=best_match['videoId'],
-                        track_name=best_match['title'],
-                        artist_name=best_match['artists'][0]['name'] if best_match.get('artists') else 'Unknown',
-                        match_type='fuzzy',
-                        confidence=best_score,
-                        platform='youtube_music'
-                    )
-            
-            return None
-            
-        except Exception as e:
-            print(f"❌ Error searching YouTube Music: {e}")
-            return None
-    
-    def create_playlist(self, name: str, description: str = "") -> Optional[str]:
-        """Create YouTube Music playlist"""
-        try:
-            playlist_id = self.ytm.create_playlist(
-                title=name,
-                description=description,
-                privacy_status='PRIVATE'
-            )
-            return playlist_id
-        except Exception as e:
-            print(f"❌ Error creating YouTube Music playlist: {e}")
-            return None
-    
-    def add_tracks_to_playlist(self, playlist_id: str, track_ids: List[str]) -> bool:
-        """Add tracks to YouTube Music playlist"""
-        try:
-            # Add tracks in batches
-            batch_size = 50
-            for i in range(0, len(track_ids), batch_size):
-                batch = track_ids[i:i + batch_size]
-                self.ytm.add_playlist_items(playlist_id, batch)
-                time.sleep(0.5)  # Rate limiting
-            
-            return True
-        except Exception as e:
-            print(f"❌ Error adding tracks to YouTube Music playlist: {e}")
-            return False
-
 class Local2Stream:
     """Main application class"""
     
@@ -644,16 +475,9 @@ class Local2Stream:
             spotify_handler = SpotifyHandler(config['spotify'])
             if spotify_handler.authenticate():
                 self.platforms['spotify'] = spotify_handler
-        
-        if 'youtube_music' in config['platforms']:
-            youtube_handler = YouTubeMusicHandler(config['youtube_music'])
-            if youtube_handler.authenticate():
-                self.platforms['youtube_music'] = youtube_handler
-        
         if not self.platforms:
             print("❌ No platforms authenticated successfully!")
             return False
-        
         return True
     
     def scan_music_directory(self, directory: str) -> List[str]:
@@ -673,11 +497,9 @@ class Local2Stream:
     def process_music_files(self, music_files: List[str], config: Dict):
         """Process music files and transfer to streaming platforms"""
         self.stats['total_files'] = len(music_files)
-        
         # Create playlists on each platform
         playlist_ids = {}
-        description = f"Auto-generated by Local2Stream - {len(music_files)} files processed on {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-        
+        description = f"Auto-generated by Local2Stream - {len(music_files)} files processed on {datetime.now().strftime('%Y-%m-%d %H:%M')} | Made by Aryan"
         for platform_name, platform_handler in self.platforms.items():
             playlist_id = platform_handler.create_playlist(
                 config['playlist_name'],
@@ -688,13 +510,10 @@ class Local2Stream:
                 print(f"✅ Created playlist on {platform_handler.platform_name}: {config['playlist_name']}")
             else:
                 print(f"❌ Failed to create playlist on {platform_handler.platform_name}")
-        
         # Process each file
         platform_tracks = {platform: [] for platform in self.platforms.keys()}
-        
         for i, file_path in enumerate(music_files):
             print(f"\n🎵 Processing {i+1}/{len(music_files)}: {Path(file_path).name}")
-            
             # Extract metadata
             metadata = AudioMetadataExtractor.extract_metadata(file_path)
             if not metadata:
@@ -705,29 +524,22 @@ class Local2Stream:
                     'error': 'Could not extract metadata'
                 })
                 continue
-            
             print(f"  📀 {metadata.artist} - {metadata.title}")
-            
             # Search on each platform
             found_on_platforms = []
-            
             for platform_name, platform_handler in self.platforms.items():
                 match_result = platform_handler.search_track(metadata)
-                
                 if match_result:
                     platform_tracks[platform_name].append(match_result.track_id)
                     found_on_platforms.append(platform_name)
-                    
                     icon = "✅" if match_result.match_type == 'exact' else "🔍"
                     print(f"  {icon} {platform_handler.platform_name}: {match_result.artist_name} - {match_result.track_name}")
-                    
                     if match_result.match_type == 'exact':
                         self.stats['found_exact'] += 1
                     else:
                         self.stats['found_fuzzy'] += 1
                 else:
                     print(f"  ❌ {platform_handler.platform_name}: No match found")
-            
             if found_on_platforms:
                 self.results['added_tracks'].append({
                     'local_file': file_path,
@@ -742,14 +554,11 @@ class Local2Stream:
                     'title': metadata.title,
                     'artist': metadata.artist
                 })
-            
             self.stats['processed'] += 1
-            
             # Add tracks to playlists in batches
             if i % 25 == 0 and i > 0:
                 self.add_tracks_to_playlists(playlist_ids, platform_tracks)
                 platform_tracks = {platform: [] for platform in self.platforms.keys()}
-        
         # Add remaining tracks
         if any(tracks for tracks in platform_tracks.values()):
             self.add_tracks_to_playlists(playlist_ids, platform_tracks)
@@ -768,7 +577,7 @@ class Local2Stream:
     def print_summary(self):
         """Print transfer summary"""
         print("\n" + "="*60)
-        print("🎵 LOCAL2STREAM TRANSFER SUMMARY")
+        print("🎵 LOCAL2STREAM TRANSFER SUMMARY (Made by Aryan)")
         print("="*60)
         print(f"Total files found: {self.stats['total_files']}")
         print(f"Successfully processed: {self.stats['processed']}")
@@ -776,17 +585,27 @@ class Local2Stream:
         print(f"Fuzzy matches found: {self.stats['found_fuzzy']}")
         print(f"Not found: {self.stats['not_found']}")
         print(f"Errors: {self.stats['errors']}")
-        
         if self.stats['total_files'] > 0:
             success_rate = ((self.stats['found_exact'] + self.stats['found_fuzzy']) / self.stats['total_files']) * 100
             print(f"Success rate: {success_rate:.1f}%")
-        
         print(f"\nPlatforms used: {', '.join(handler.platform_name for handler in self.platforms.values())}")
+        print("Made by Aryan")
     
     def save_results(self):
         """Save results to JSON files"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
+        # Save added tracks
+        if self.results['added_tracks']:
+            added_file = f"added_tracks_{timestamp}.json"
+            with open(added_file, 'w', encoding='utf-8') as f:
+                json.dump(self.results['added_tracks'], f, indent=2, ensure_ascii=False)
+            print(f"📋 Added tracks: {added_file}")
+        # Save not found tracks
+        if self.results['not_found_tracks']:
+            not_found_file = f"not_found_tracks_{timestamp}.json"
+            with open(not_found_file, 'w', encoding='utf-8') as f:
+                json.dump(self.results['not_found_tracks'], f, indent=2, ensure_ascii=False)
+            print(f"📋 Not found tracks: {not_found_file}")
         # Save detailed results
         results_file = f"local2stream_results_{timestamp}.json"
         with open(results_file, 'w', encoding='utf-8') as f:
@@ -794,23 +613,10 @@ class Local2Stream:
                 'stats': self.stats,
                 'results': self.results,
                 'timestamp': timestamp,
-                'platforms': list(self.platforms.keys())
+                'platforms': list(self.platforms.keys()),
+                'made_by': 'Aryan'
             }, f, indent=2, ensure_ascii=False)
-        
         print(f"\n📊 Results saved to: {results_file}")
-        
-        # Save separate files for easy access
-        if self.results['not_found_tracks']:
-            not_found_file = f"not_found_tracks_{timestamp}.json"
-            with open(not_found_file, 'w', encoding='utf-8') as f:
-                json.dump(self.results['not_found_tracks'], f, indent=2, ensure_ascii=False)
-            print(f"📋 Not found tracks: {not_found_file}")
-        
-        if self.results['added_tracks']:
-            added_file = f"added_tracks_{timestamp}.json"
-            with open(added_file, 'w', encoding='utf-8') as f:
-                json.dump(self.results['added_tracks'], f, indent=2, ensure_ascii=False)
-            print(f"📋 Added tracks: {added_file}")
     
     def run(self):
         """Main run method"""
@@ -898,7 +704,7 @@ Supported audio formats:
     print("-" * 60)
     
     # Check for required packages
-    required_packages = ['spotipy', 'mutagen', 'ytmusicapi']
+    required_packages = ['spotipy', 'mutagen']
     missing_packages = []
     
     for package in required_packages:
