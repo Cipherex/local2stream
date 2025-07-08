@@ -86,16 +86,9 @@ class ConfigManager:
             print(f"❌ Directory not found: {music_dir}")
             sys.exit(1)
         
-        # Platform selection (only Spotify now)
-        print("\nSelect streaming platform:")
-        print("1. Spotify")
-        platform_choice = input("Enter choice (1): ").strip()
-        platforms = []
-        if platform_choice in ['', '1']:
-            platforms.append('spotify')
-        else:
-            print("❌ Invalid choice. Exiting.")
-            sys.exit(1)
+        # Only Spotify is supported now
+        print("\nStreaming platform: Spotify (only)")
+        platforms = ['spotify']
         
         # Playlist name
         default_playlist = self.config.get('playlist_name', 'Local2Stream Collection')
@@ -104,9 +97,7 @@ class ConfigManager:
             playlist_name = default_playlist
         
         # Platform-specific credentials
-        spotify_config = {}
-        if 'spotify' in platforms:
-            spotify_config = self.get_spotify_config()
+        spotify_config = self.get_spotify_config()
         
         config = {
             'music_directory': music_dir,
@@ -355,7 +346,7 @@ class SpotifyHandler(StreamingPlatformBase):
         return ratio
 
     def search_track(self, metadata: TrackMetadata) -> Optional[MatchResult]:
-        """Search for track on Spotify with improved fuzzy matching"""
+        """Search for track on Spotify with improved fuzzy matching and fallback by artist"""
         if not self.sp:
             return None
         try:
@@ -411,6 +402,28 @@ class SpotifyHandler(StreamingPlatformBase):
                         confidence=best_score,
                         platform='spotify'
                     )
+            # Fallback: search by artist only, then fuzzy match title
+            if artist:
+                artist_query = f'artist:"{artist}"'
+                artist_results = self.sp.search(q=artist_query, type='track', limit=30)
+                if artist_results['tracks']['items']:
+                    best_match = None
+                    best_score = 0
+                    for track in artist_results['tracks']['items']:
+                        track_title = track['name']
+                        title_score = self._fuzzy_match(track_title, title)
+                        if title_score > best_score and title_score > 0.5:
+                            best_score = title_score
+                            best_match = track
+                    if best_match:
+                        return MatchResult(
+                            track_id=best_match['id'],
+                            track_name=best_match['name'],
+                            artist_name=best_match['artists'][0]['name'],
+                            match_type='artist_fallback',
+                            confidence=best_score,
+                            platform='spotify'
+                        )
             return None
         except Exception as e:
             print(f"❌ Error searching Spotify: {e}")
