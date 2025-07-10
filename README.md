@@ -22,7 +22,6 @@ Transfer your local music collection to streaming platforms with intelligent mat
 ## Supported Platforms 🎧
 
 - **Spotify** ✅ (Full support with playlist creation)
-- More platforms coming soon!
 
 ## Installation 🚀
 
@@ -64,10 +63,6 @@ Transfer your local music collection to streaming platforms with intelligent mat
       - Copy your **Client ID** (visible by default)
       - Click "View client secret" and copy your **Client Secret**
       - **Important:** Keep these credentials secure and never share them publicly
-   
-   3. **Verify Redirect URI:**
-      - Ensure `http://localhost:8888/callback` is listed in your app's redirect URIs
-      - This exact URI is required for authentication to work
 
 ## Usage 📖
 
@@ -106,7 +101,6 @@ python local2stream_cli.py
 - **Spotify Authentication**: Secure credential input with password masking
 - **Real-time Progress Bar**: Visual progress indicator
 - **Live Logging**: Detailed process logs with colored status indicators
-- **Status Bar**: Quick status updates and notifications
 
 ### Progress Indicators
 
@@ -186,11 +180,6 @@ Success rate: 91.8%
 - Check filename format (use "Artist - Title" format)
 - Verify file formats are supported
 
-**Transfer Stops or Freezes**
-- Large collections may take time to process
-- The GUI will remain responsive during processing
-- Check the log area for detailed error messages
-
 ## File Structure 📁
 
 ```
@@ -211,24 +200,6 @@ Contributions are welcome! Please feel free to:
 3. Make your changes
 4. Submit a pull request
 
-### Development Setup
-
-For GUI development:
-```bash
-pip install PyQt5 spotipy mutagen
-```
-
-## Roadmap 🗺️
-
-- [ ] Apple Music support
-- [ ] YouTube Music support
-- [ ] Batch playlist management
-- [ ] Enhanced GUI features (dark mode, themes)
-- [ ] Docker support
-- [ ] Duplicate detection
-- [ ] Advanced matching algorithms
-- [ ] Drag-and-drop functionality
-- [ ] Multi-language support
 
 ## License 📄
 
