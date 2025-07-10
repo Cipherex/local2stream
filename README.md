@@ -1,19 +1,21 @@
-# Local2Stream 🎵
+# Local2Stream GUI 🎵
 
-Transfer your local music collection to streaming platforms with intelligent matching and fuzzy search capabilities.
+Transfer your local music collection to streaming platforms with intelligent matching and fuzzy search capabilities - now with a user-friendly graphical interface!
 
 [![Python](https://img.shields.io/badge/Python-3.7%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Spotify](https://img.shields.io/badge/Platform-Spotify-1DB954.svg)](https://spotify.com)
+[![GUI](https://img.shields.io/badge/Interface-PyQt5-blue.svg)](https://pypi.org/project/PyQt5/)
 
 ## Features ✨
 
+- **User-Friendly GUI**: Intuitive graphical interface built with PyQt5
 - **Smart Music Matching**: Intelligent track matching with fuzzy search algorithms
 - **Multiple Audio Formats**: Supports MP3, FLAC, M4A, MP4, WAV, OGG
 - **Batch Processing**: Process entire music libraries efficiently
+- **Real-time Progress**: Live progress bar and detailed logging
 - **Metadata Extraction**: Automatically extracts title, artist, and album information
 - **Fallback Strategies**: Multiple search strategies for better match rates
-- **Configuration Management**: Save and reuse settings for future runs
 - **Detailed Reporting**: Comprehensive results with success rates and error logs
 - **Rate Limiting**: Respects platform API limits to avoid throttling
 
@@ -39,7 +41,7 @@ Transfer your local music collection to streaming platforms with intelligent mat
 
 2. **Install dependencies**
    ```bash
-   pip install spotipy mutagen
+   pip install spotipy mutagen PyQt5
    ```
 
 3. **Set up Spotify credentials**
@@ -69,28 +71,51 @@ Transfer your local music collection to streaming platforms with intelligent mat
 
 ## Usage 📖
 
-### Interactive Mode
+### GUI Application
 
-Run the script and follow the prompts:
+Run the graphical interface:
+
+```bash
+python local2stream_gui.py
+```
+
+### Command Line Version
+
+For the command-line version:
 
 ```bash
 python local2stream_cli.py
 ```
 
-### Command Line Options
+### Using the GUI
 
-```bash
-python local2stream_cli.py --help        # Show help
-python local2stream_cli.py --version     # Show version
-python local2stream_cli.py --config      # Use saved configuration
-```
+1. **Select Music Directory**: Click "Browse" to choose your music folder
+2. **Enter Playlist Name**: Choose a name for your new Spotify playlist
+3. **Enter Spotify Credentials**: 
+   - Input your Spotify Client ID
+   - Input your Spotify Client Secret (hidden for security)
+4. **Start Transfer**: Click "Start Transfer" to begin the process
+5. **Monitor Progress**: Watch the real-time progress bar and detailed logs
 
-### First Run Setup
+## GUI Features 🖥️
 
-1. **Music Directory**: Enter the path to your music collection
-2. **Playlist Name**: Choose a name for your new playlist
-3. **Spotify Credentials**: Enter your Client ID and Client Secret
-4. **Configuration**: Option to save settings for future use
+### Main Interface Elements
+
+- **Music Directory Selection**: Browse and select your music folder
+- **Playlist Configuration**: Set your desired playlist name
+- **Spotify Authentication**: Secure credential input with password masking
+- **Real-time Progress Bar**: Visual progress indicator
+- **Live Logging**: Detailed process logs with colored status indicators
+- **Status Bar**: Quick status updates and notifications
+
+### Progress Indicators
+
+- 📁 Directory scanning
+- 🎵 File discovery
+- 🔍 Track searching
+- ✅ Successful matches
+- ❌ Failed matches
+- 🎉 Completion summary
 
 ## How It Works 🔍
 
@@ -105,46 +130,11 @@ python local2stream_cli.py --config      # Use saved configuration
 3. **Title-Only Search**: When artist information is unavailable
 4. **Artist Fallback**: Search by artist, then match titles
 
-## Configuration 🛠️
-
-The tool creates a `local2stream_config.json` file to store your preferences:
-
-```json
-{
-  "music_directory": "/path/to/your/music",
-  "playlist_name": "Local2Stream Collection",
-  "platforms": ["spotify"],
-  "spotify": {
-    "client_id": "your_client_id",
-    "client_secret": "your_client_secret",
-    "redirect_uri": "http://localhost:8888/callback"
-  }
-}
-```
-
-## Output Files 📊
-
-After processing, the tool generates several files:
-
-- `added_tracks_YYYYMMDD_HHMMSS.json`: Successfully added tracks
-- `not_found_tracks_YYYYMMDD_HHMMSS.json`: Tracks that couldn't be matched
-- `local2stream_results_YYYYMMDD_HHMMSS.json`: Detailed results and statistics
-
-## Example Output 📈
-
-```
-🎵 LOCAL2STREAM TRANSFER SUMMARY
-============================================
-Total files found: 1,245
-Successfully processed: 1,245
-Exact matches found: 987
-Fuzzy matches found: 156
-Not found: 102
-Errors: 0
-Success rate: 91.8%
-
-Platforms used: Spotify
-```
+### Match Types in GUI
+- **[Exact]**: Perfect title and artist match
+- **[Fuzzy]**: High similarity match with confidence scoring
+- **[Title Only]**: Match based on title when artist is unavailable
+- **[Artist Fallback]**: Found through artist search with title matching
 
 ## Supported Audio Formats 🎵
 
@@ -156,9 +146,35 @@ Platforms used: Spotify
 | WAV    | `.wav`    | ⚠️ Filename only |
 | OGG    | `.ogg`    | ⚠️ Filename only |
 
+## Example GUI Output 📈
+
+```
+📁 Scanning directory: /Users/username/Music
+🎵 Found 1,245 music files
+✅ Created playlist: My Local Collection
+🔍 Searching: The Beatles - Hey Jude
+✅ [Exact] The Beatles - Hey Jude
+🔍 Searching: Unknown Artist - Great Song
+🔍 [Fuzzy] Various Artists - Great Song
+❌ Not found: Obscure Artist - Rare Track
+
+==== SUMMARY ====
+Total files: 1,245
+Exact matches: 987
+Fuzzy matches: 156
+Title only matches: 45
+Artist fallback matches: 55
+Not found: 102
+Success rate: 91.8%
+```
+
 ## Troubleshooting 🔧
 
 ### Common Issues
+
+**GUI Won't Start**
+- Ensure PyQt5 is installed: `pip install PyQt5`
+- Check Python version compatibility (3.7+)
 
 **Authentication Error**
 - Verify your Spotify credentials are correct
@@ -170,9 +186,21 @@ Platforms used: Spotify
 - Check filename format (use "Artist - Title" format)
 - Verify file formats are supported
 
-**Rate Limiting**
-- The tool automatically handles rate limiting
-- For large collections, processing may take time
+**Transfer Stops or Freezes**
+- Large collections may take time to process
+- The GUI will remain responsive during processing
+- Check the log area for detailed error messages
+
+## File Structure 📁
+
+```
+local2stream/
+├── local2stream_gui.py          # GUI application
+├── local2stream_cli.py          # Command-line version
+├── README.md                    # This file
+├── LICENSE                      # MIT License
+└── requirements.txt             # Python dependencies
+```
 
 ## Contributing 🤝
 
@@ -183,25 +211,24 @@ Contributions are welcome! Please feel free to:
 3. Make your changes
 4. Submit a pull request
 
-## Roadmap 🗺️
+### Development Setup
 
-- [ ] Apple Music support
-- [ ] YouTube Music support
-- [ ] Batch playlist management
-- [ ] GUI interface
-- [ ] Docker support
-- [ ] Duplicate detection
-- [ ] Advanced matching algorithms
+For GUI development:
+```bash
+pip install PyQt5 spotipy mutagen
+```
 
 ## Roadmap 🗺️
 
 - [ ] Apple Music support
 - [ ] YouTube Music support
 - [ ] Batch playlist management
-- [ ] GUI interface
+- [ ] Enhanced GUI features (dark mode, themes)
 - [ ] Docker support
 - [ ] Duplicate detection
 - [ ] Advanced matching algorithms
+- [ ] Drag-and-drop functionality
+- [ ] Multi-language support
 
 ## License 📄
 
@@ -218,15 +245,17 @@ If you encounter any issues or have questions:
 1. Check the [Issues](https://github.com/cipherex/local2stream/issues) page
 2. Create a new issue with detailed information
 3. Include error logs and configuration details
+4. For GUI-specific issues, include your operating system and Python version
 
 ## Acknowledgments 🙏
 
 - [Spotipy](https://spotipy.readthedocs.io/) for Spotify API integration
 - [Mutagen](https://mutagen.readthedocs.io/) for audio metadata handling
+- [PyQt5](https://pypi.org/project/PyQt5/) for the graphical interface
 - The open-source community for inspiration and support
 
 ---
 
 **Made with ❤️ by [Aryan](https://github.com/cipherex)**
 
-*Local2Stream v2.0.0 - Bringing your local music to the streaming world*
+*Local2Stream v2.0.0 - Bringing your local music to the streaming world with style*
